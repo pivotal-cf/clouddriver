@@ -16,6 +16,7 @@
 
 package com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops;
 
+import com.netflix.spinnaker.clouddriver.artifacts.ArtifactDownloader;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClient;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.model.v3.ProcessStats;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.CloudFoundryServerGroupNameResolver;
@@ -33,6 +34,7 @@ import javax.annotation.Nullable;
 import java.io.*;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 import static com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops.CloudFoundryOperationUtils.describeProcessState;
@@ -47,6 +49,7 @@ public class DeployCloudFoundryServerGroupAtomicOperation
   private final OperationPoller operationPoller;
   private final DeployCloudFoundryServerGroupDescription description;
   private final CloudFoundryClusterProvider clusterProvider;
+  private final ArtifactDownloader artifactDownloader;
 
   @Override
   protected String getPhase() {
@@ -126,7 +129,7 @@ public class DeployCloudFoundryServerGroupAtomicOperation
 
     File file = null;
     try {
-      InputStream artifactInputStream = description.getArtifactCredentials().download(description.getArtifact());
+      InputStream artifactInputStream = artifactDownloader.download(description.getArtifact());
       file = File.createTempFile(description.getArtifact().getReference(), null);
       FileOutputStream fileOutputStream = new FileOutputStream(file);
       IOUtils.copy(artifactInputStream, fileOutputStream);
@@ -141,9 +144,7 @@ public class DeployCloudFoundryServerGroupAtomicOperation
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     } finally {
-      if (file != null) {
-        file.delete();
-      }
+      Optional.ofNullable(file).ifPresent(File::delete);
     }
 
     return packageId;

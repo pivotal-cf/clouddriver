@@ -16,6 +16,7 @@
 
 package com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops;
 
+import com.netflix.spinnaker.clouddriver.artifacts.ArtifactDownloader;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.artifacts.ArtifactCredentialsFromString;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.Applications;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClient;
@@ -36,6 +37,10 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 
 import static com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops.DeployCloudFoundryServerGroupAtomicOperation.convertToMb;
@@ -49,8 +54,38 @@ import static org.mockito.Mockito.when;
 class DeployCloudFoundryServerGroupAtomicOperationTest extends AbstractCloudFoundryAtomicOperationTest {
 
   private final CloudFoundryClient cloudFoundryClient = new MockCloudFoundryClient();
+  private final ArtifactDownloader mockArtifactDownloader = mock(ArtifactDownloader.class);
+
+  {
+    String downloadedContent =
+      "artifact: {\n" +
+        "type: \"artifact-type\"\n" +
+        "name: \"artifact-name\"\n" +
+        "version: \"artifact-version\"\n" +
+        "location: \"artifact-location\"\n" +
+        "reference: \"artifact-reference\"\n" +
+        "metadata: \"artifact-metadata\"\n" +
+        "artifact-account: \"artifact-artifact-account\"\n" +
+        "provenance: \"artifact-provenance\"\n" +
+        "uuid: \"artifact-uuid\"\n" +
+        "service_name: my-service-name\n" +
+        "service: my-service\n" +
+        "service_plan: my-service-plan\n" +
+        "tags:\n" +
+        "- tag1\n" +
+        "parameters: |\n" +
+        "  { \"foo\": \"bar\" }\n";
+
+    InputStream mockInputStream = new ByteArrayInputStream(downloadedContent.getBytes(StandardCharsets.UTF_8));
+    try {
+      when(mockArtifactDownloader.download(any())).thenReturn(mockInputStream);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
 
   private DefaultTask testTask = new DefaultTask("testTask");
+
   {
     TaskRepository.threadLocalTask.set(testTask);
   }
@@ -95,7 +130,7 @@ class DeployCloudFoundryServerGroupAtomicOperationTest extends AbstractCloudFoun
     description.setRegion("region1");
     final CloudFoundryClusterProvider clusterProvider = mock(CloudFoundryClusterProvider.class);
     final DeployCloudFoundryServerGroupAtomicOperation operation =
-      new DeployCloudFoundryServerGroupAtomicOperation(new PassThroughOperationPoller(), description, clusterProvider);
+      new DeployCloudFoundryServerGroupAtomicOperation(new PassThroughOperationPoller(), description, clusterProvider, mockArtifactDownloader);
 
     final Applications apps = cloudFoundryClient.getApplications();
     when(clusterProvider.getClusters()).thenReturn(Collections.emptyMap());

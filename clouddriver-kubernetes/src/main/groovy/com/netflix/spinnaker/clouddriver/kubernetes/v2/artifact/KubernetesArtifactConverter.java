@@ -29,7 +29,7 @@ import java.util.Map;
 public abstract class KubernetesArtifactConverter {
   abstract public Artifact toArtifact(ArtifactProvider artifactProvider, KubernetesManifest manifest, String account);
   abstract public KubernetesCoordinates toCoordinates(Artifact artifact);
-  abstract public String getDeployedName(Artifact artifact);
+  abstract public String  getDeployedName(Artifact artifact);
 
   protected String getType(KubernetesManifest manifest) {
     return String.join("/",

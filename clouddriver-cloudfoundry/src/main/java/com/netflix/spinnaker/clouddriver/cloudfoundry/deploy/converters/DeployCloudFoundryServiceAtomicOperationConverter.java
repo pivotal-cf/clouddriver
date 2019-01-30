@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.google.common.annotations.VisibleForTesting;
-import com.netflix.spinnaker.clouddriver.artifacts.ArtifactCredentialsRepository;
+import com.netflix.spinnaker.clouddriver.artifacts.ArtifactDownloader;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.CloudFoundryOperation;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.description.DeployCloudFoundryServiceDescription;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops.DeployCloudFoundryServiceAtomicOperation;
@@ -39,10 +39,10 @@ import java.util.Set;
 @CloudFoundryOperation(AtomicOperations.DEPLOY_SERVICE)
 @Component
 public class DeployCloudFoundryServiceAtomicOperationConverter extends AbstractCloudFoundryAtomicOperationConverter {
-  private final ArtifactCredentialsRepository credentialsRepository;
+  private final ArtifactDownloader artifactDownloader;
 
-  public DeployCloudFoundryServiceAtomicOperationConverter(ArtifactCredentialsRepository credentialsRepository) {
-    this.credentialsRepository = credentialsRepository;
+  public DeployCloudFoundryServiceAtomicOperationConverter(ArtifactDownloader artifactDownloader) {
+    this.artifactDownloader = artifactDownloader;
   }
 
   @Override
@@ -67,7 +67,7 @@ public class DeployCloudFoundryServiceAtomicOperationConverter extends AbstractC
         converted.setServiceAttributes(attrs);
         break;
       case "artifact":
-        downloadAndProcessManifest(manifest, credentialsRepository, myMap -> converted.setServiceAttributes(convertManifest(myMap)));
+        downloadAndProcessManifest(manifest, myMap -> converted.setServiceAttributes(convertManifest(myMap)), artifactDownloader);
         break;
       case "userProvided":
         converted.setServiceType("userProvided");
@@ -79,7 +79,7 @@ public class DeployCloudFoundryServiceAtomicOperationConverter extends AbstractC
         break;
       case "userProvidedArtifact":
         converted.setServiceType("userProvided");
-        downloadAndProcessManifest(manifest, credentialsRepository, myMap -> converted.setUserProvidedServiceAttributes(convertUserProvidedServiceManifest(myMap)));
+        downloadAndProcessManifest(manifest, myMap -> converted.setUserProvidedServiceAttributes(convertUserProvidedServiceManifest(myMap)), artifactDownloader);
         break;
     }
     return converted;

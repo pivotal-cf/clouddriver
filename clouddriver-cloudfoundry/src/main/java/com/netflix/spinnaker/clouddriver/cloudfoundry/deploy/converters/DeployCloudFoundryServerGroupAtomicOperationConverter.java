@@ -22,10 +22,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.google.common.annotations.VisibleForTesting;
-import com.netflix.spinnaker.clouddriver.artifacts.ArtifactCredentialsRepository;
-import com.netflix.spinnaker.clouddriver.artifacts.config.ArtifactCredentials;
+import com.netflix.spinnaker.clouddriver.artifacts.ArtifactDownloader;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.CloudFoundryOperation;
-import com.netflix.spinnaker.clouddriver.cloudfoundry.artifacts.PackageArtifactCredentials;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.description.DeployCloudFoundryServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops.DeployCloudFoundryServerGroupAtomicOperation;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.provider.view.CloudFoundryClusterProvider;
@@ -33,7 +31,6 @@ import com.netflix.spinnaker.clouddriver.cloudfoundry.security.CloudFoundryCrede
 import com.netflix.spinnaker.clouddriver.helpers.OperationPoller;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
-import com.netflix.spinnaker.kork.artifacts.model.Artifact;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -50,20 +47,20 @@ import static java.util.stream.Collectors.toList;
 @Component
 public class DeployCloudFoundryServerGroupAtomicOperationConverter extends AbstractCloudFoundryServerGroupAtomicOperationConverter {
   private final OperationPoller operationPoller;
-  private final ArtifactCredentialsRepository credentialsRepository;
   private final CloudFoundryClusterProvider clusterProvider;
+  private final ArtifactDownloader artifactDownloader;
 
   public DeployCloudFoundryServerGroupAtomicOperationConverter(@Qualifier("cloudFoundryOperationPoller") OperationPoller operationPoller,
-                                                               ArtifactCredentialsRepository credentialsRepository,
-                                                               CloudFoundryClusterProvider clusterProvider) {
+                                                               CloudFoundryClusterProvider clusterProvider,
+                                                               ArtifactDownloader artifactDownloader) {
+    this.artifactDownloader = artifactDownloader;
     this.operationPoller = operationPoller;
-    this.credentialsRepository = credentialsRepository;
     this.clusterProvider = clusterProvider;
   }
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new DeployCloudFoundryServerGroupAtomicOperation(operationPoller, convertDescription(input), clusterProvider);
+    return new DeployCloudFoundryServerGroupAtomicOperation(operationPoller, convertDescription(input), clusterProvider, artifactDownloader);
   }
 
   @Override
@@ -75,34 +72,12 @@ public class DeployCloudFoundryServerGroupAtomicOperationConverter extends Abstr
 
     converted.setSpace(findSpace(converted.getRegion(), converted.getClient())
       .orElseThrow(() -> new IllegalArgumentException("Unable to find space '" + converted.getRegion() + "'.")));
-
-    Map artifactSource = (Map) input.get("artifact");
-
-    if ("artifact".equals(artifactSource.get("type"))) {
-      ArtifactCredentials artifactCredentials = credentialsRepository.getAllCredentials().stream()
-        .filter(creds -> creds.getName().equals(artifactSource.get("account")))
-        .findAny()
-        .orElseThrow(() -> new IllegalArgumentException("Unable to find artifact credentials '" + artifactSource.get("account") + "'"));
-
-      converted.setArtifact(convertToArtifact(artifactCredentials, artifactSource.get("reference").toString()));
-      converted.setArtifactCredentials(artifactCredentials);
-    } else if ("package".equals(artifactSource.get("type"))) {
-      CloudFoundryCredentials artifactCredentials = getCredentialsObject(artifactSource.get("account").toString());
-      converted.setArtifactCredentials(new PackageArtifactCredentials(artifactCredentials.getClient()));
-
-      Artifact artifact = new Artifact();
-      artifact.setType("package");
-      artifact.setReference(getServerGroupId(artifactSource.get("serverGroupName").toString(),
-        artifactSource.get("region").toString(), artifactCredentials.getClient()));
-      converted.setArtifact(artifact);
-    }
-
     Map manifest = (Map) input.get("manifest");
     if ("direct".equals(manifest.get("type"))) {
       DeployCloudFoundryServerGroupDescription.ApplicationAttributes attrs = getObjectMapper().convertValue(manifest, DeployCloudFoundryServerGroupDescription.ApplicationAttributes.class);
       converted.setApplicationAttributes(attrs);
     } else if ("artifact".equals(manifest.get("type"))) {
-      downloadAndProcessManifest(manifest, credentialsRepository, myMap -> converted.setApplicationAttributes(convertManifest(myMap)));
+      downloadAndProcessManifest(manifest, myMap -> converted.setApplicationAttributes(convertManifest(myMap)), artifactDownloader);
     }
     return converted;
   }

@@ -17,8 +17,7 @@
 package com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.converters;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.netflix.spinnaker.clouddriver.artifacts.ArtifactCredentialsRepository;
-import com.netflix.spinnaker.clouddriver.cloudfoundry.artifacts.ArtifactCredentialsFromString;
+import com.netflix.spinnaker.clouddriver.artifacts.ArtifactDownloader;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClient;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.MockCloudFoundryClient;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.description.DeployCloudFoundryServiceDescription;
@@ -35,6 +34,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.stubbing.Answer;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -42,6 +45,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class DeployCloudFoundryServiceAtomicOperationConverterTest {
@@ -71,32 +75,34 @@ class DeployCloudFoundryServiceAtomicOperationConverterTest {
     }
   };
 
-  private final ArtifactCredentialsRepository artifactCredentialsRepository = new ArtifactCredentialsRepository();
-
-  {
-    artifactCredentialsRepository.save(new ArtifactCredentialsFromString(
-      "test",
-      List.of("a").asJava(),
-      "service_name: my-service-name\n" +
-        "service: my-service\n" +
-        "service_plan: my-service-plan\n" +
-        "tags:\n" +
-        "- tag1\n" +
-        "parameters: |\n" +
-        "  { \"foo\": \"bar\" }\n"
-    ));
-  }
-
   private final AccountCredentialsRepository accountCredentialsRepository = new MapBackedAccountCredentialsRepository();
+
+  private final ArtifactDownloader mockArtifactDownloader = mock(ArtifactDownloader.class);
 
   {
     accountCredentialsRepository.update("test", cloudFoundryCredentials);
+    String downloadedContent =
+      "service_name: my-service-name\n" +
+      "service: my-service\n" +
+      "service_plan: my-service-plan\n" +
+      "tags:\n" +
+      "- tag1\n" +
+      "parameters: |\n" +
+      "  { \"foo\": \"bar\" }\n";
+
+    InputStream mockInputStream = new ByteArrayInputStream(downloadedContent.getBytes(StandardCharsets.UTF_8));
+    try {
+      when(mockArtifactDownloader.download(any())).thenReturn(mockInputStream);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
   }
 
   private final AccountCredentialsProvider accountCredentialsProvider =
     new DefaultAccountCredentialsProvider(accountCredentialsRepository);
+
   private final DeployCloudFoundryServiceAtomicOperationConverter converter =
-    new DeployCloudFoundryServiceAtomicOperationConverter(artifactCredentialsRepository);
+    new DeployCloudFoundryServiceAtomicOperationConverter(mockArtifactDownloader);
 
   @BeforeEach
   void initializeClassUnderTest() {
@@ -126,86 +132,6 @@ class DeployCloudFoundryServiceAtomicOperationConverterTest {
           "foo", "bar"
         ).toJavaMap())
     );
-  }
-
-  @Test
-  void convertManifestMapToServiceAttributesMissingServiceThrowsException() {
-    final Map input = HashMap.of(
-      "service_name", "my-service-name",
-      "service_plan", "my-service-plan",
-      "tags", List.of(
-        "my-tag"
-      ).asJava(),
-      "parameters", "{\"foo\": \"bar\"}"
-    ).toJavaMap();
-
-    assertThrows(IllegalArgumentException.class, () -> converter.convertManifest(input), "Manifest is missing the service");
-  }
-
-  @Test
-  void convertManifestMapToServiceAttributesMissingServiceNameThrowsException() {
-    final Map input = HashMap.of(
-      "service_name", "my-service-name",
-      "service_plan", "my-service-plan",
-      "tags", List.of(
-        "my-tag"
-      ).asJava(),
-      "parameters", "{\"foo\": \"bar\"}"
-    ).toJavaMap();
-
-    assertThrows(IllegalArgumentException.class, () -> converter.convertManifest(input), "Manifest is missing the service name");
-  }
-
-  @Test
-  void convertManifestMapToServiceAttributesMissingServicePlanThrowsException() {
-    final Map input = HashMap.of(
-      "service", "my-service",
-      "service_name", "my-service-name",
-      "tags", List.of(
-        "my-tag"
-      ).asJava(),
-      "parameters", "{\"foo\": \"bar\"}"
-    ).toJavaMap();
-
-    assertThrows(IllegalArgumentException.class, () -> converter.convertManifest(input), "Manifest is missing the service plan");
-  }
-
-  @Test
-  void convertCupsManifestMapToUserProvidedServiceAttributes() {
-    final Map input = HashMap.of(
-      "service_name", "my-service-name",
-      "syslog_drain_url", "test-syslog-drain-url",
-      "route_service_url", "test-route-service-url",
-      "tags", List.of(
-        "my-tag"
-      ).asJava(),
-      "credentials_map", "{\"foo\": \"bar\"}"
-    ).toJavaMap();
-
-    assertThat(converter.convertUserProvidedServiceManifest(input)).isEqualToComparingFieldByFieldRecursively(
-      new DeployCloudFoundryServiceDescription.UserProvidedServiceAttributes()
-        .setServiceName("my-service-name")
-        .setSyslogDrainUrl("test-syslog-drain-url")
-        .setRouteServiceUrl("test-route-service-url")
-        .setTags(Collections.singleton("my-tag"))
-        .setCredentialsMap(HashMap.<String, Object>of(
-          "foo", "bar"
-        ).toJavaMap())
-    );
-  }
-
-  @Test
-  void convertCupsManifestMapToUserProvidedServiceAttributesMissingServiceNameThrowsException() {
-    final Map input = HashMap.of(
-      "syslog_drain_url", "test-syslog-drain-url",
-      "route_service_url", "test-route-service-url",
-      "tags", List.of(
-        "my-tag"
-      ).asJava(),
-      "credentials_map", "{\"foo\": \"bar\"}"
-    ).toJavaMap();
-
-    assertThrows(IllegalArgumentException.class, () -> converter.convertUserProvidedServiceManifest(input), "Manifest is missing the service name");
   }
 
   @Test

@@ -16,7 +16,8 @@
 
 package com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops;
 
-import com.netflix.spinnaker.clouddriver.cloudfoundry.client.*;
+import com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClient;
+import com.netflix.spinnaker.clouddriver.cloudfoundry.client.MockCloudFoundryClient;
 import com.netflix.spinnaker.clouddriver.data.task.DefaultTask;
 import com.netflix.spinnaker.clouddriver.data.task.Status;
 import com.netflix.spinnaker.clouddriver.data.task.Task;

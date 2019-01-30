@@ -37,8 +37,6 @@ public class DeployCloudFoundryServerGroupDescription extends AbstractCloudFound
   private String stack;
   private String detail;
   private CloudFoundrySpace space;
-
-  @JsonIgnore
   private Artifact artifact;
 
   @JsonIgnore

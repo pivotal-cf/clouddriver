@@ -17,10 +17,9 @@
 package com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.converters;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.netflix.spinnaker.clouddriver.artifacts.ArtifactCredentialsRepository;
-import com.netflix.spinnaker.clouddriver.cloudfoundry.artifacts.ArtifactCredentialsFromString;
-import com.netflix.spinnaker.clouddriver.cloudfoundry.artifacts.PackageArtifactCredentials;
-import com.netflix.spinnaker.clouddriver.cloudfoundry.client.*;
+import com.netflix.spinnaker.clouddriver.artifacts.ArtifactDownloader;
+import com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClient;
+import com.netflix.spinnaker.clouddriver.cloudfoundry.client.MockCloudFoundryClient;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.description.DeployCloudFoundryServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.model.CloudFoundryOrganization;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.model.CloudFoundrySpace;
@@ -35,12 +34,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.stubbing.Answer;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class DeployCloudFoundryServerGroupAtomicOperationConverterTest {
@@ -62,8 +66,7 @@ class DeployCloudFoundryServerGroupAtomicOperationConverterTest {
       });
     }
 
-    return new CloudFoundryCredentials(name, "", "", "", "", "", "")
-    {
+    return new CloudFoundryCredentials(name, "", "", "", "", "", "") {
       public CloudFoundryClient getClient() {
         return cloudFoundryClient;
       }
@@ -71,24 +74,30 @@ class DeployCloudFoundryServerGroupAtomicOperationConverterTest {
   }
 
   private List<String> accounts = List.of("test", "sourceAccount", "destinationAccount");
-  private final ArtifactCredentialsRepository artifactCredentialsRepository = new ArtifactCredentialsRepository();
+  private final ArtifactDownloader mockArtifactDownloader = mock(ArtifactDownloader.class);
+
   {
-    accounts.toStream().forEach(account -> artifactCredentialsRepository.save(new ArtifactCredentialsFromString(
-      account,
-      List.of("a").asJava(),
-      "applications: [{instances: 42}]"
-    )));
+    String downloadedContent = "applications: [{instances: 42}]";
+    InputStream mockInputStream = new ByteArrayInputStream(downloadedContent.getBytes(StandardCharsets.UTF_8));
+
+    try {
+      when(mockArtifactDownloader.download(any())).thenReturn(mockInputStream);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
   }
 
   private final AccountCredentialsRepository accountCredentialsRepository = new MapBackedAccountCredentialsRepository();
+
   {
     accounts.toStream().forEach(account -> accountCredentialsRepository.update(account, createCredentials(account)));
   }
+
   private final AccountCredentialsProvider accountCredentialsProvider =
     new DefaultAccountCredentialsProvider(accountCredentialsRepository);
 
   private final DeployCloudFoundryServerGroupAtomicOperationConverter converter =
-    new DeployCloudFoundryServerGroupAtomicOperationConverter(null, artifactCredentialsRepository, null);
+    new DeployCloudFoundryServerGroupAtomicOperationConverter(null, null, mockArtifactDownloader);
 
   @BeforeEach
   void initializeClassUnderTest() {
@@ -116,10 +125,7 @@ class DeployCloudFoundryServerGroupAtomicOperationConverterTest {
 
     final DeployCloudFoundryServerGroupDescription result = converter.convertDescription(input);
 
-    CloudFoundryCredentials sourceCredentials = converter.getCredentialsObject("sourceAccount");
     assertThat(result.getAccountName()).isEqualTo("destinationAccount");
-    assertThat(result.getArtifactCredentials())
-      .isEqualToComparingFieldByFieldRecursively(new PackageArtifactCredentials(sourceCredentials.getClient()));
     assertThat(result.getSpace()).isEqualToComparingFieldByFieldRecursively(
       CloudFoundrySpace.builder().id("spaceID").name("space").organization(
         CloudFoundryOrganization.builder().id("orgID").name("org").build()).build());
