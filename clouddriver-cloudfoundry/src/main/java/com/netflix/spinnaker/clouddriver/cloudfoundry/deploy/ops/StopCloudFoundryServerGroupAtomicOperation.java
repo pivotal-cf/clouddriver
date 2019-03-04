@@ -17,22 +17,21 @@
 package com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops;
 
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClient;
-import com.netflix.spinnaker.clouddriver.cloudfoundry.client.model.v3.ProcessStats;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.description.StopCloudFoundryServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.data.task.Task;
 import com.netflix.spinnaker.clouddriver.data.task.TaskRepository;
-import com.netflix.spinnaker.clouddriver.helpers.OperationPoller;
+import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import lombok.RequiredArgsConstructor;
 
+import java.util.Collections;
 import java.util.List;
 
-import static com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops.CloudFoundryOperationUtils.describeProcessState;
+import static java.util.stream.Collectors.toList;
 
 @RequiredArgsConstructor
-public class StopCloudFoundryServerGroupAtomicOperation implements AtomicOperation<Void> {
+public class StopCloudFoundryServerGroupAtomicOperation implements AtomicOperation<DeploymentResult> {
   private static final String PHASE = "STOP_SERVER_GROUP";
-  private final OperationPoller operationPoller;
   private final StopCloudFoundryServerGroupDescription description;
 
   private static Task getTask() {
@@ -40,25 +39,18 @@ public class StopCloudFoundryServerGroupAtomicOperation implements AtomicOperati
   }
 
   @Override
-  public Void operate(List priorOutputs) {
+  public DeploymentResult operate(List priorOutputs) {
     getTask().updateStatus(PHASE, "Stopping '" + description.getServerGroupName() + "'");
     CloudFoundryClient client = description.getClient();
 
     client.getApplications().stopApplication(description.getServerGroupId());
 
-    ProcessStats.State state = operationPoller.waitForOperation(
-      () -> client.getApplications().getProcessState(description.getServerGroupId()),
-      inProgressState -> inProgressState != ProcessStats.State.STARTING,
-      null, getTask(), description.getServerGroupName(), PHASE);
-
-    if (state != ProcessStats.State.DOWN) {
-      getTask().updateStatus(PHASE, "Failed to stop '" + description.getServerGroupName() + "' which instead " + describeProcessState(state));
-      getTask().fail();
-      return null;
-    }
-
-    getTask().updateStatus(PHASE, "Stopped '" + description.getServerGroupName() + "'");
-
-    return null;
+    DeploymentResult deploymentResult = new DeploymentResult();
+    deploymentResult.setServerGroupNames(Collections.singletonList(description.getRegion() + ":" + description.getServerGroupName()));
+    deploymentResult.getServerGroupNameByRegion().put(description.getRegion(), description.getServerGroupName());
+    deploymentResult.setMessages(getTask().getHistory().stream()
+      .map(hist -> hist.getPhase() + ":" + hist.getStatus())
+      .collect(toList()));
+    return deploymentResult;
   }
 }

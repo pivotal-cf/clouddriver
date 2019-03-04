@@ -19,10 +19,8 @@ package com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.converters;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.CloudFoundryOperation;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.description.StartCloudFoundryServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.deploy.ops.StartCloudFoundryServerGroupAtomicOperation;
-import com.netflix.spinnaker.clouddriver.helpers.OperationPoller;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -30,15 +28,10 @@ import java.util.Map;
 @CloudFoundryOperation(AtomicOperations.ENABLE_SERVER_GROUP)
 @Component
 public class StartCloudFoundryServerGroupAtomicOperationConverter extends AbstractCloudFoundryServerGroupAtomicOperationConverter {
-  private final OperationPoller operationPoller;
-
-  public StartCloudFoundryServerGroupAtomicOperationConverter(@Qualifier("cloudFoundryOperationPoller") OperationPoller operationPoller) {
-    this.operationPoller = operationPoller;
-  }
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new StartCloudFoundryServerGroupAtomicOperation(operationPoller, convertDescription(input));
+    return new StartCloudFoundryServerGroupAtomicOperation(convertDescription(input));
   }
 
   @Override

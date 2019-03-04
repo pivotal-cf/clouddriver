@@ -22,6 +22,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netflix.spinnaker.cats.agent.*;
 import com.netflix.spinnaker.cats.cache.CacheData;
 import com.netflix.spinnaker.cats.provider.ProviderCache;
+import com.netflix.spinnaker.clouddriver.cache.OnDemandAgent;
+import com.netflix.spinnaker.clouddriver.cache.OnDemandMetricsSupport;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.cache.Keys;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.cache.ResourceCacheData;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClient;
@@ -29,6 +31,7 @@ import com.netflix.spinnaker.clouddriver.cloudfoundry.model.CloudFoundryApplicat
 import com.netflix.spinnaker.clouddriver.cloudfoundry.model.CloudFoundryLoadBalancer;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.model.Views;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.provider.CloudFoundryProvider;
+import com.netflix.spinnaker.moniker.Moniker;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -41,7 +44,7 @@ import static java.util.stream.Collectors.toSet;
 
 @Getter
 @Slf4j
-public class CloudFoundryCachingAgent implements CachingAgent, AccountAware {
+public class CloudFoundryCachingAgent implements CachingAgent, OnDemandAgent, AccountAware {
   private final String providerName = CloudFoundryProvider.class.getName();
   private final Collection<AgentDataType> providedDataTypes = Arrays.asList(
     AUTHORITATIVE.forType(APPLICATIONS.getNs()),
@@ -61,6 +64,41 @@ public class CloudFoundryCachingAgent implements CachingAgent, AccountAware {
     this.account = account;
     this.client = client;
     this.cacheViewMapper.setConfig(cacheViewMapper.getSerializationConfig().withView(Views.Cache.class));
+  }
+
+  @Override
+  public String getOnDemandAgentType() {
+    return this.getAgentType() + "-OnDemand";
+  }
+
+  @Override
+  public OnDemandMetricsSupport getMetricsSupport() {
+    return null;
+  }
+
+  @Override
+  public boolean handles(OnDemandType type, String cloudProvider) {
+    return cloudProvider == this.providerName;
+  }
+
+  @Override
+  public Moniker convertOnDemandDetails(Map<String, String> details) {
+    return null;
+  }
+
+  @Override
+  public OnDemandResult handle(ProviderCache providerCache, Map<String, ?> data) {
+    return null;
+  }
+
+  @Override
+  public Collection<Map> pendingOnDemandRequests(ProviderCache providerCache) {
+    return null;
+  }
+
+  @Override
+  public Map pendingOnDemandRequest(ProviderCache providerCache, String id) {
+    return null;
   }
 
   @Override
