@@ -24,12 +24,6 @@ import retrofit.http.*;
 import java.util.List;
 
 public interface ServiceInstanceService {
-  @GET("/v2/service_instances")
-  Page<ServiceInstance> all(@Query("page") Integer page, @Query("q") List<String> queryParams);
-
-  @GET("/v2/user_provided_service_instances")
-  Page<UserProvidedServiceInstance> allUserProvided(@Query("page") Integer page, @Query("q") List<String> queryParam);
-
   @POST("/v2/service_bindings?accepts_incomplete=true")
   Response createServiceBinding(@Body CreateServiceBinding body);
 

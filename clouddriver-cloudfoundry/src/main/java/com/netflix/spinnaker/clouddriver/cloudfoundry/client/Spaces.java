@@ -21,6 +21,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.api.SpaceService;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.model.v2.Resource;
+import com.netflix.spinnaker.clouddriver.cloudfoundry.client.model.v2.ServiceInstance;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.model.v2.Space;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.client.model.v2.SpaceSummary;
 import com.netflix.spinnaker.clouddriver.cloudfoundry.model.CloudFoundrySpace;
@@ -29,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import static com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClientUtils.collectPageResources;
 import static com.netflix.spinnaker.clouddriver.cloudfoundry.client.CloudFoundryClientUtils.safelyCall;
 import static java.util.stream.Collectors.toList;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 
 @RequiredArgsConstructor
 public class Spaces {
@@ -80,6 +83,25 @@ public class Spaces {
     return safelyCall(() -> api.all(null, Arrays.asList("name:" + spaceName, "organization_guid:" + orgId)))
       .flatMap(page -> page.getResources().stream().findAny().map(this::map))
       .orElse(null);
+  }
+
+  @Nullable
+  public Resource<ServiceInstance> getServiceInstanceByNameAndSpace(CloudFoundrySpace space, @Nullable String serviceInstanceName) {
+    if (isBlank(serviceInstanceName)) {
+      throw new CloudFoundryApiException("Please specify a name for the service being sought");
+    }
+
+    List<String> query = Arrays.asList("name:" + serviceInstanceName);
+    return collectPageResources("service instance by name and space id", pg -> api.getServiceInstancesBySpaceId(space.getId(), pg, query))
+      .stream()
+      .findFirst()
+      .orElse(null);
+  }
+
+  public List<Resource<ServiceInstance>> getServiceInstancesBySpaceAndNames(CloudFoundrySpace space, List<String> serviceInstanceNames) {
+    List<String> query = Collections.singletonList(
+      serviceInstanceNames.size() == 1 ? "name:" + serviceInstanceNames.get(0) : "name IN " + String.join(",", serviceInstanceNames));
+    return collectPageResources("service instance by space id", pg -> api.getServiceInstancesBySpaceId(space.getId(), pg, query));
   }
 
   private CloudFoundrySpace map(Resource<Space> res) throws CloudFoundryApiException {

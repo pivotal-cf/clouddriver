@@ -21,5 +21,5 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class UserProvidedServiceInstance extends AbstractServiceInstance {
+public class UserProvidedServiceInstance extends ServiceInstance {
 }
