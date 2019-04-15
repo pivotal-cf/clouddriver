@@ -1,11 +1,11 @@
 /*
- * Copyright 2018 Pivotal, Inc.
+ * Copyright 2019 Pivotal, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,20 +14,15 @@
  * limitations under the License.
  */
 
-package com.netflix.spinnaker.clouddriver.cloudfoundry.client;
+package com.netflix.spinnaker.clouddriver.cloudfoundry.model;
 
-public interface CloudFoundryClient {
-  Spaces getSpaces();
+import com.netflix.spinnaker.clouddriver.model.SecurityGroupSummary;
+import lombok.EqualsAndHashCode;
+import lombok.Value;
 
-  Organizations getOrganizations();
-
-  Domains getDomains();
-
-  Routes getRoutes();
-
-  Applications getApplications();
-
-  ServiceInstances getServiceInstances();
-
-  NetworkPolicies getNetworkPolicies();
+@Value
+@EqualsAndHashCode(of = "id", callSuper = false)
+public class CloudFoundrySecurityGroupSummary implements SecurityGroupSummary {
+  private final String name;
+  private final String id;
 }
