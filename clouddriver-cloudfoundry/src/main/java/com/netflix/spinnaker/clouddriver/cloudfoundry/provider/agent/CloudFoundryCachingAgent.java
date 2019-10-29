@@ -88,8 +88,14 @@ public class CloudFoundryCachingAgent implements CachingAgent, OnDemandAgent, Ac
     String accountName = getAccountName();
     log.info("Caching all resources in Cloud Foundry account " + accountName);
 
-    List<CloudFoundryApplication> apps = client.getApplications().all();
     List<CloudFoundryLoadBalancer> loadBalancers = client.getRoutes().all();
+    List<CloudFoundryApplication> apps;
+    // if the server group name space is empty we should perform a full cache refresh
+    if (providerCache.getAll(SERVER_GROUPS.getNs()).isEmpty()) {
+      apps = client.getApplications().all();
+    } else {
+      apps = client.getApplications().getLatestApplications();
+    }
 
     Map<String, Collection<CacheData>> results =
         HashMap.<String, Collection<CacheData>>of(

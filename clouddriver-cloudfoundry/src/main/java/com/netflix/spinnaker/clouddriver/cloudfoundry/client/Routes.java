@@ -59,7 +59,7 @@ public class Routes {
 
   private LoadingCache<String, List<RouteMapping>> routeMappings =
       CacheBuilder.newBuilder()
-          .expireAfterWrite(1, TimeUnit.SECONDS)
+          .expireAfterWrite(30, TimeUnit.SECONDS)
           .build(
               new CacheLoader<String, List<RouteMapping>>() {
                 @Override
