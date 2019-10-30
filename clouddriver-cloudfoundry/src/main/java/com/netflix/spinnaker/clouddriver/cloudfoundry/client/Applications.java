@@ -102,7 +102,9 @@ public class Applications {
     // Evict Records from `cache` that are no longer in the foundation
     List<String> availableAppIds =
         newCloudFoundryAppList.stream().map(Application::getGuid).collect(toList());
-    serverGroupCache.asMap().keySet().stream()
+    serverGroupCache
+        .asMap()
+        .keySet()
         .forEach(
             key -> {
               if (!availableAppIds.contains(key)) {
@@ -168,7 +170,7 @@ public class Applications {
   @Nullable
   public CloudFoundryServerGroup findServerGroupByNameAndSpaceId(String name, String spaceId) {
     return Optional.ofNullable(findServerGroupId(name, spaceId))
-        .map(serverGroupId -> Optional.ofNullable(findById(serverGroupId)).orElse(null))
+        .flatMap(serverGroupId -> Optional.ofNullable(findById(serverGroupId)))
         .orElse(null);
   }
 
@@ -210,81 +212,29 @@ public class Applications {
         safelyCall(() -> api.findApplicationEnvById(appId)).orElse(null);
     Process process = safelyCall(() -> api.findProcessById(appId)).orElse(null);
 
-    CloudFoundryDroplet droplet = null;
-    try {
-      CloudFoundryPackage cfPackage =
-          safelyCall(() -> api.findPackagesByAppId(appId))
-              .map(
-                  packages ->
-                      packages.getResources().stream()
-                          .findFirst()
-                          .map(
-                              pkg ->
-                                  CloudFoundryPackage.builder()
-                                      .downloadUrl(
-                                          pkg.getLinks().containsKey("download")
-                                              ? pkg.getLinks().get("download").getHref()
-                                              : null)
-                                      .checksumType(
-                                          pkg.getData().getChecksum() == null
-                                              ? null
-                                              : pkg.getData().getChecksum().getType())
-                                      .checksum(
-                                          pkg.getData().getChecksum() == null
-                                              ? null
-                                              : pkg.getData().getChecksum().getValue())
-                                      .build())
-                          .orElse(null))
-              .orElse(null);
-
-      droplet =
-          safelyCall(() -> api.findDropletByApplicationGuid(appId))
-              .map(
-                  apiDroplet ->
-                      CloudFoundryDroplet.builder()
-                          .id(apiDroplet.getGuid())
-                          .name(application.getName() + "-droplet")
-                          .stack(apiDroplet.getStack())
-                          .buildpacks(
-                              ofNullable(apiDroplet.getBuildpacks()).orElse(emptyList()).stream()
-                                  .map(
-                                      bp ->
-                                          CloudFoundryBuildpack.builder()
-                                              .name(bp.getName())
-                                              .detectOutput(bp.getDetectOutput())
-                                              .version(bp.getVersion())
-                                              .buildpackName(bp.getBuildpackName())
-                                              .build())
-                                  .collect(toList()))
-                          .space(space)
-                          .sourcePackage(cfPackage)
-                          .build())
-              .orElse(null);
-    } catch (Exception ex) {
-      log.debug("Unable to retrieve droplet for application '" + application.getName() + "'");
-    }
-
-    List<CloudFoundryServiceInstance> cloudFoundryServices =
-        applicationEnv == null
-            ? emptyList()
-            : applicationEnv.getSystemEnvJson().getVcapServices().entrySet().stream()
-                .flatMap(
-                    vcap ->
-                        vcap.getValue().stream()
-                            .map(
-                                instance ->
-                                    CloudFoundryServiceInstance.builder()
-                                        .serviceInstanceName(vcap.getKey())
-                                        .name(instance.getName())
-                                        .plan(instance.getPlan())
-                                        .tags(instance.getTags())
-                                        .build()))
-                .collect(toList());
-
+    CloudFoundryDroplet droplet = findCloudFoundryApplicationDroplet(application, space);
     Map<String, Object> environmentVars =
-        applicationEnv == null || applicationEnv.getEnvironmentJson() == null
-            ? emptyMap()
-            : applicationEnv.getEnvironmentJson();
+        Optional.ofNullable(applicationEnv)
+            .map(ApplicationEnv::getEnvironmentJson)
+            .orElse(emptyMap());
+    List<CloudFoundryServiceInstance> cloudFoundryServices =
+        Optional.ofNullable(applicationEnv)
+            .map(
+                a ->
+                    applicationEnv.getSystemEnvJson().getVcapServices().entrySet().stream()
+                        .flatMap(
+                            vcap ->
+                                vcap.getValue().stream()
+                                    .map(
+                                        instance ->
+                                            CloudFoundryServiceInstance.builder()
+                                                .serviceInstanceName(vcap.getKey())
+                                                .name(instance.getName())
+                                                .plan(instance.getPlan())
+                                                .tags(instance.getTags())
+                                                .build()))
+                        .collect(toList()))
+            .orElse(emptyList());
 
     final CloudFoundryBuildInfo buildInfo = getBuildInfoFromEnvVars(environmentVars);
     final ArtifactInfo artifactInfo = getArtifactInfoFromEnvVars(environmentVars);
@@ -304,13 +254,17 @@ public class Applications {
     String serverGroupAppManagerUri = appsManagerUri;
     if (StringUtils.isNotEmpty(appsManagerUri)) {
       serverGroupAppManagerUri =
-          appsManagerUri
-              + "/organizations/"
-              + space.getOrganization().getId()
-              + "/spaces/"
-              + space.getId()
-              + "/applications/"
-              + appId;
+          Optional.ofNullable(space)
+              .map(
+                  s ->
+                      appsManagerUri
+                          + "/organizations/"
+                          + s.getOrganization().getId()
+                          + "/spaces/"
+                          + s.getId()
+                          + "/applications/"
+                          + appId)
+              .orElse("not available");
     }
 
     String serverGroupMetricsUri = metricsUri;
@@ -343,6 +297,62 @@ public class Applications {
             .build();
 
     return checkHealthStatus(cloudFoundryServerGroup, application);
+  }
+
+  @Nullable
+  private CloudFoundryDroplet findCloudFoundryApplicationDroplet(
+      Application application, CloudFoundrySpace space) {
+    try {
+      CloudFoundryPackage cfPackage =
+          safelyCall(() -> api.findPackagesByAppId(application.getGuid()))
+              .flatMap(
+                  packages ->
+                      packages.getResources().stream()
+                          .findFirst()
+                          .map(
+                              pkg ->
+                                  CloudFoundryPackage.builder()
+                                      .downloadUrl(
+                                          pkg.getLinks().containsKey("download")
+                                              ? pkg.getLinks().get("download").getHref()
+                                              : null)
+                                      .checksumType(
+                                          pkg.getData().getChecksum() == null
+                                              ? null
+                                              : pkg.getData().getChecksum().getType())
+                                      .checksum(
+                                          pkg.getData().getChecksum() == null
+                                              ? null
+                                              : pkg.getData().getChecksum().getValue())
+                                      .build()))
+              .orElse(null);
+
+      return safelyCall(() -> api.findDropletByApplicationGuid(application.getGuid()))
+          .map(
+              apiDroplet ->
+                  CloudFoundryDroplet.builder()
+                      .id(apiDroplet.getGuid())
+                      .name(application.getName() + "-droplet")
+                      .stack(apiDroplet.getStack())
+                      .buildpacks(
+                          ofNullable(apiDroplet.getBuildpacks()).orElse(emptyList()).stream()
+                              .map(
+                                  bp ->
+                                      CloudFoundryBuildpack.builder()
+                                          .name(bp.getName())
+                                          .detectOutput(bp.getDetectOutput())
+                                          .version(bp.getVersion())
+                                          .buildpackName(bp.getBuildpackName())
+                                          .build())
+                              .collect(toList()))
+                      .space(space)
+                      .sourcePackage(cfPackage)
+                      .build())
+          .orElse(null);
+    } catch (Exception ex) {
+      log.debug("Unable to retrieve droplet for application '" + application.getName() + "'");
+      return null;
+    }
   }
 
   private CloudFoundryServerGroup checkHealthStatus(
@@ -504,7 +514,7 @@ public class Applications {
       throws CloudFoundryApiException {
     final Process.HealthCheck healthCheck =
         healthCheckType != null ? new Process.HealthCheck().setType(healthCheckType) : null;
-    if (healthCheckEndpoint != null && !healthCheckEndpoint.isEmpty()) {
+    if (healthCheck != null && healthCheckEndpoint != null && !healthCheckEndpoint.isEmpty()) {
       healthCheck.setData(new Process.HealthCheckData().setEndpoint(healthCheckEndpoint));
     }
     safelyCall(() -> api.updateProcess(guid, new UpdateProcess(command, healthCheck)));
@@ -539,9 +549,9 @@ public class Applications {
     }
   }
 
-  public String uploadPackageBits(String packageGuid, File file) throws CloudFoundryApiException {
+  public void uploadPackageBits(String packageGuid, File file) throws CloudFoundryApiException {
     TypedFile uploadFile = new TypedFile("multipart/form-data", file);
-    return safelyCall(() -> api.uploadPackageBits(packageGuid, uploadFile))
+    safelyCall(() -> api.uploadPackageBits(packageGuid, uploadFile))
         .map(Package::getGuid)
         .orElseThrow(
             () ->
